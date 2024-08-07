@@ -13,6 +13,13 @@ import org.springframework.transaction.interceptor.TransactionInterceptor;
 @EnableTransactionManagement
 public class ExampleConfig {
 
+  /**
+   * This is the TransactionAttributeSource that will be used by our instance of
+   * TransactionInterceptor. It is responsible for providing the transaction attributes for the
+   * methods that are annotated with @Transactional.
+   *
+   * @return the TransactionAttributeSource
+   */
   @Bean
   public TransactionAttributeSource transactionAttributeSource() {
     return new AnnotationTransactionAttributeSource();
@@ -20,8 +27,9 @@ public class ExampleConfig {
 
   @Bean
   public CustomTransactionInterceptor transactionInterceptorCustomizer(
-      TransactionManager transactionManager, TransactionAttributeSource transactionAttributeSource) {
-    
+      TransactionManager transactionManager,
+      TransactionAttributeSource transactionAttributeSource) {
+
     return new CustomTransactionInterceptor(transactionManager,
         transactionAttributeSource);
   }

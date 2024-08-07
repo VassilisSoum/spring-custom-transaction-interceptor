@@ -25,8 +25,8 @@ import org.springframework.util.ClassUtils;
 
 /**
  * CustomTransactionInterceptor is a Spring AOP MethodInterceptor for managing transactions in
- * methods that return Try monad types. It extends TransactionAspectSupport to utilize its
- * transaction management functionalities.
+ * methods that return Try monad types. It extends TransactionInterceptor to utilize its transaction
+ * management functionalities.
  */
 public class CustomTransactionInterceptor extends TransactionInterceptor {
 
@@ -37,7 +37,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
 
   @Override
   @Nullable
-  public Object invoke(MethodInvocation invocation) throws Throwable {
+  public Object invoke(MethodInvocation invocation) {
     // Work out the target class: may be {@code null}.
     // The TransactionAttributeSource should be passed the target class
     // as well as the method, which may be from an interface.
@@ -107,21 +107,32 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
 
     try {
       retVal.set(invocation.proceedWithInvocation());
-      if (transactionAttribute != null) {
-        return evaluateTransaction(txInfo, retVal, transactionAttribute);
-      }
-      // It means that no transaction is demarcated.
-      return retVal;
+      return processTransactionResult(transactionAttribute, txInfo, retVal);
     } catch (Throwable ex) {
-      rollback(txInfo,
-          ignored -> super.completeTransactionAfterThrowing(txInfo, ex));
-      if (method.getReturnType().isAssignableFrom(Try.class)) {
-        return Try.failure(ex);
-      }
-      throw new RuntimeException(ex);
+      return handleTransactionException(method, ex, txInfo);
     } finally {
       cleanupTransactionInfo(txInfo);
     }
+  }
+
+  private Try<Object> handleTransactionException(Method method, Throwable ex,
+      TransactionInfo txInfo) {
+    rollback(txInfo,
+        ignored -> super.completeTransactionAfterThrowing(txInfo, ex));
+    if (method.getReturnType().isAssignableFrom(Try.class)) {
+      return Try.failure(ex);
+    }
+    throw new RuntimeException(ex);
+  }
+
+  private Object processTransactionResult(TransactionAttribute transactionAttribute,
+      TransactionInfo txInfo,
+      AtomicReference<Object> retVal) {
+    if (transactionAttribute != null) {
+      return evaluateTransaction(txInfo, retVal, transactionAttribute);
+    }
+    // It means that no transaction is demarcated.
+    return retVal;
   }
 
   /**
@@ -148,12 +159,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
         try {
           return invocation.proceedWithInvocation();
         } catch (Throwable ex) {
-          rollback(txInfo, ignored -> {
-          });
-          if (method.getReturnType().isAssignableFrom(Try.class)) {
-            return Try.failure(ex);
-          }
-          throw new RuntimeException(ex);
+          return handleTransactionException(method, ex, txInfo);
         } finally {
           cleanupTransactionInfo(txInfo);
         }
@@ -177,7 +183,6 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
     TransactionStatus status = txInfo.getTransactionStatus();
     if (status != null && (retVal.get() instanceof Try<?>)) {
       retVal.set(evaluateTryFailure(retVal, transactionAttribute, status));
-      //return Try.of(() -> commitTransaction(txInfo, retVal));
       try {
         return commitTransaction(txInfo, retVal);
       } catch (Exception e) {
