@@ -12,8 +12,7 @@ In this example we use the custom TransactionInterceptor to handle transaction m
 the [com.soumakis.control.Try](https://github.com/VassilisSoum/FunctionalUtils/blob/master/src/main/java/com/soumakis/control/Try.java)
 monad to be able to express exceptions as types in the method signature.
 
-However, the custom TransactionInterceptor can be used to handle any custom return type for a method
-annotated with the `@Transactional` annotation.
+However, feel free to customize it to suit your needs or open a PR with suggestions and improvements.
 
 ## Steps required
 
