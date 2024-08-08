@@ -4,6 +4,7 @@ import com.soumakis.control.Try;
 import java.io.IOException;
 import java.io.ObjectInputStream;
 import java.io.ObjectOutputStream;
+import java.io.Serial;
 import java.lang.reflect.Method;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
@@ -38,13 +39,9 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
   @Override
   @Nullable
   public Object invoke(MethodInvocation invocation) {
-    // Work out the target class: may be {@code null}.
-    // The TransactionAttributeSource should be passed the target class
-    // as well as the method, which may be from an interface.
     Class<?> targetClass = (invocation.getThis() != null ? AopUtils.getTargetClass(
         invocation.getThis()) : null);
 
-    // Adapt to TransactionAspectSupport's invokeWithinTransaction...
     return invokeWithinTransaction(invocation.getMethod(), targetClass, invocation::proceed);
   }
 
@@ -62,13 +59,20 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
   @Nullable
   protected Object invokeWithinTransaction(Method method, @Nullable Class<?> targetClass,
       final InvocationCallback invocation) {
+    // Retrieves the source of the transaction attribute which can be via spring configuration,
+    // programmatic transaction management or annotation based
+    // or null if no transaction attribute is found.
     TransactionAttributeSource transactionAttributeSource = getTransactionAttributeSource();
     final TransactionAttribute transactionAttribute = (transactionAttributeSource != null)
         ? transactionAttributeSource.getTransactionAttribute(method, targetClass) : null;
+    // Retrieves the transaction manager to be used for managing the transaction
     final TransactionManager transactionManager = determineTransactionManager(transactionAttribute);
 
+    // Typically we operate only on PlatformTransactionManager
     PlatformTransactionManager platformTransactionManager = asPlatformTransactionManager(
         transactionManager);
+
+    // Retrieves the method aop joinpoint identification
     final String joinpointIdentification = methodIdentification(method, targetClass,
         transactionAttribute);
 
@@ -186,6 +190,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
       try {
         return commitTransaction(txInfo, retVal);
       } catch (Exception e) {
+        // For any exception do not propagage the exception but respect the return type and return a Try#Failure.
         return Try.failure(e);
       }
     }
@@ -197,6 +202,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
     return retVal.get();
   }
 
+  @Serial
   private void writeObject(ObjectOutputStream oos) throws IOException {
     oos.defaultWriteObject();
     oos.writeObject(getTransactionManagerBeanName());
@@ -205,6 +211,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
     oos.writeObject(getBeanFactory());
   }
 
+  @Serial
   private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
     ois.defaultReadObject();
     setTransactionManagerBeanName((String) ois.readObject());
@@ -252,6 +259,7 @@ public class CustomTransactionInterceptor extends TransactionInterceptor {
       TransactionAttribute txAttr,
       TransactionStatus status) {
     return ((Try<?>) retVal.get()).onFailure(ex -> {
+      // This basically will respect the @Transactional(noRollbackFor= {...})
       if (txAttr.rollbackOn(ex)) {
         status.setRollbackOnly();
       }
